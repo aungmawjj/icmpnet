@@ -52,7 +52,7 @@ func (c *Client) onConnect() {
 }
 
 func (c *Client) mainLoop() {
-	buf := make([]byte, 32768)
+	buf := make([]byte, 5000)
 	for {
 		n, addr, err := c.pconn.ReadFrom(buf)
 		if err != nil {

@@ -22,25 +22,38 @@ func (ic *icmpConn) serverLoop() {
 		ic.onClose()
 	}()
 
-	buf := make([]byte, 32768)
+	prevSeq := 0
+
+	buf := make([]byte, 4096)
 	for {
 		select {
 		case msg := <-ic.readCh:
 			var (
+				n    int
 				body *icmp.Echo
 				ok   bool
+				err  error
 			)
-			if body, ok = msg.Body.(*icmp.Echo); ok {
-				ic.writeInBuf(body.Data)
+			body, ok = msg.Body.(*icmp.Echo)
+			if ok {
+				if body.Seq > prevSeq {
+					ic.writeInBuf(body.Data)
+				}
 			}
-			n, err := ic.readOutBuf(buf)
-			if err != nil {
-				return
+
+			if body.Seq > prevSeq {
+				n, err = ic.readOutBuf(buf)
+				if err != nil {
+					return
+				}
 			}
+
+			prevSeq = body.Seq
 
 			if n == 0 && len(body.Data) == 0 {
 				time.Sleep(300 * time.Millisecond)
 			}
+
 			body.Data = buf[:n]
 			msg.Type = ipv4.ICMPTypeEchoReply
 			err = ic.sendMsg(msg)
@@ -48,8 +61,8 @@ func (ic *icmpConn) serverLoop() {
 				return
 			}
 
-		case <-time.After(2 * time.Second):
-			// packet lost can occur
+		case <-time.After(5 * time.Second):
+			// fmt.Println("packet may lost")
 			return
 		}
 	}
@@ -63,14 +76,21 @@ func (ic *icmpConn) clientLoop() {
 
 	id := rand.Int()
 	seq := 1
+	prevSeq := 0
 
-	buf := make([]byte, 32768)
+	buf := make([]byte, 4096)
 	for {
-		n, err := ic.readOutBuf(buf)
-		if err != nil {
-			return
+		var (
+			n   int
+			err error
+		)
+		if seq > prevSeq {
+			n, err = ic.readOutBuf(buf)
+			if err != nil {
+				return
+			}
+			prevSeq = seq
 		}
-
 		body := &icmp.Echo{
 			ID:   id,
 			Seq:  seq,
@@ -94,9 +114,9 @@ func (ic *icmpConn) clientLoop() {
 			if body, ok := msg.Body.(*icmp.Echo); ok {
 				ic.writeInBuf(body.Data)
 			}
-		case <-time.After(2 * time.Second):
-			// packet lost can occur
+			seq++
+		case <-time.After(1 * time.Second):
+			// fmt.Println("packet may lost")
 		}
-		seq++
 	}
 }

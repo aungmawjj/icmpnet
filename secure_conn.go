@@ -52,18 +52,17 @@ func (sc *secureConn) readLoop() {
 		}
 
 		size := binary.BigEndian.Uint32(sizeB)
-		if size > 32768 {
+		if size > 35000 {
 			return
 		}
 		emsg := make([]byte, size)
-		if err := sc.readFullTimeout(emsg, 2*time.Second); err != nil {
+		if err := sc.readFullTimeout(emsg, 5*time.Second); err != nil {
 			return
 		}
 		msg, err := sc.aesgcm.Open(nil, sc.aesKey[:12], emsg, nil)
 		if err != nil {
 			return
 		}
-
 		sc.writeInBuf(msg)
 	}
 }
@@ -107,11 +106,11 @@ func (sc *secureConn) writeLoop() {
 
 		_, err := sc.baseConn.Write(sizeB)
 		if err != nil {
-			break
+			return
 		}
 		_, err = sc.baseConn.Write(emsg)
 		if err != nil {
-			break
+			return
 		}
 	}
 }

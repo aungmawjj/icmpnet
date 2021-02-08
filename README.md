@@ -8,8 +8,8 @@ Features:
 - Implements standard net.Listener and net.Conn interface to be able to extend for high level protocols such as http, rpc.
 
 Implemented Use-case applications:
-- simple message broker and client. (each message is a single line)
-- rpc server and client
+- Message broker and client (each message is a single line)
+- File upload (used rpc to upload file and respond status)
 
 ## Build
 ```sh
@@ -29,12 +29,23 @@ sudo ./msgbroker -pw <password>
 
 Client
 ```sh
-sudo ./msgclient -server <serverIP> -name <Your Name> -pw <password>
+sudo ./msgclient -server <serverIP> -pw <password> -name <Your Name>
 ```
 
-### RPC Application
+### File Upload Application
 
-Coming soon ;)
+Server
+```sh
+// stop auto reply ping messages for linux
+echo 1 | sudo dd of=/proc/sys/net/ipv4/icmp_echo_ignore_all
+sudo ./fileserver -pw <password> -dir <file_directory>
+```
+
+Client
+```sh
+sudo ./fileclient -server <serverIP> -pw <password> -path <filepath>
+```
+
 
 ## Using API
 

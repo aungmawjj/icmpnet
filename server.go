@@ -47,7 +47,7 @@ func NewServer(aesKey []byte) (*Server, error) {
 }
 
 func (s *Server) mainLoop() {
-	buf := make([]byte, 32768)
+	buf := make([]byte, 5000)
 	for {
 		n, addr, err := s.pconn.ReadFrom(buf)
 		if err != nil {

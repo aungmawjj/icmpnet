@@ -6,22 +6,27 @@ import (
 	"fmt"
 
 	"github.com/aungmawjj/icmpnet"
-	"github.com/aungmawjj/icmpnet/broker"
+	"github.com/aungmawjj/icmpnet/rpc"
 )
 
 func main() {
-	var password string
+	var (
+		password string
+		dirPath  string
+	)
 	flag.StringVar(&password, "pw", "password", "password")
+	flag.StringVar(&dirPath, "dir", "uploaded_files", "directory for uploaded files")
 	flag.Parse()
 
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
 
-	server, err := icmpnet.NewServer(aesKey)
+	icmpServer, err := icmpnet.NewServer(aesKey)
 	check(err)
-	b := broker.New()
-	fmt.Println("Message broker started!")
-	err = b.Serve(server)
+
+	rpcServer := rpc.NewServer(dirPath)
+	fmt.Println("File server started!")
+	err = rpcServer.Serve(icmpServer)
 	check(err)
 }
 

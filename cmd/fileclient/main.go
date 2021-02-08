@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/aungmawjj/icmpnet"
+	"github.com/aungmawjj/icmpnet/rpc"
 )
 
 func printIncoming(conn net.Conn) {
@@ -33,17 +35,13 @@ func sendMessages(conn net.Conn, nickName string) {
 func main() {
 	var (
 		serverIP string
-		nickName string
 		password string
+		filepath string
 	)
 	flag.StringVar(&serverIP, "server", "13.212.27.85", "server ip address")
 	flag.StringVar(&password, "pw", "password", "password")
-	flag.StringVar(&nickName, "name", "", "nick name")
+	flag.StringVar(&filepath, "path", "", "file path")
 	flag.Parse()
-
-	if nickName == "" {
-		panic("must set a nick name")
-	}
 
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
@@ -57,11 +55,26 @@ func main() {
 	fmt.Printf("Connecting: %s ...\n", addr)
 	conn, err := client.Connect(addr, aesKey)
 	check(err)
-	fmt.Print("Connected! Enter messages.\n\n")
+	fmt.Print("Connected! Uploading File...\n\n")
 
-	go printIncoming(conn)
-	go sendMessages(conn, nickName)
-	select {}
+	endProgress := make(chan struct{}, 1)
+	go func() {
+		for {
+			select {
+			case <-endProgress:
+				return
+			case <-time.After(500 * time.Millisecond):
+				fmt.Print(".")
+			}
+		}
+	}()
+
+	rpcClient := rpc.NewClient(conn)
+	err = rpcClient.FileUpload(filepath)
+	endProgress <- struct{}{}
+	fmt.Print("\n\n")
+	check(err)
+	fmt.Println("File upload successful!")
 }
 
 func check(err error) {

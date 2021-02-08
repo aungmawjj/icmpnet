@@ -1,4 +1,4 @@
-package icmpnet
+package broker
 
 import (
 	"bufio"
@@ -13,8 +13,8 @@ type Broker struct {
 	cpMtx    sync.RWMutex
 }
 
-// NewBroker create a new Broker
-func NewBroker() *Broker {
+// New create a new Broker
+func New() *Broker {
 	return &Broker{
 		connPool: make(map[string]net.Conn, 100),
 	}
