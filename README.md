@@ -24,12 +24,12 @@ Broker
 ```sh
 // stop auto reply ping messages for linux
 echo 1 | sudo dd of=/proc/sys/net/ipv4/icmp_echo_ignore_all
-sudo ./msgbroker -pw <password>
+sudo ./bin/msgbroker -pw <password>
 ```
 
 Client
 ```sh
-sudo ./msgclient -server <serverIP> -pw <password> -name <Your Name>
+sudo ./bin/msgclient -server <serverIP> -pw <password> -name <Your Name>
 ```
 
 ### File Upload Application
@@ -38,12 +38,12 @@ Server
 ```sh
 // stop auto reply ping messages for linux
 echo 1 | sudo dd of=/proc/sys/net/ipv4/icmp_echo_ignore_all
-sudo ./fileserver -pw <password> -dir <file_directory>
+sudo ./bin/fileserver -pw <password> -dir <file_directory>
 ```
 
 Client
 ```sh
-sudo ./fileclient -server <serverIP> -pw <password> -path <filepath>
+sudo ./bin/fileclient -server <serverIP> -pw <password> -path <filepath>
 ```
 
 
