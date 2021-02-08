@@ -53,8 +53,11 @@ func main() {
 
 	addr, err := net.ResolveIPAddr("ip4", serverIP)
 	check(err)
+
+	fmt.Printf("Connecting: %s ...\n", addr)
 	conn, err := client.Connect(addr, aesKey)
 	check(err)
+	fmt.Print("Connected! Enter messages.\n\n")
 
 	go printIncoming(conn)
 	go sendMessages(conn, nickName)

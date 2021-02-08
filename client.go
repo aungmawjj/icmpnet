@@ -1,10 +1,7 @@
 package icmpnet
 
 import (
-	"fmt"
-	"math/rand"
 	"net"
-	"time"
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
@@ -12,11 +9,9 @@ import (
 
 // Client type
 type Client struct {
-	id    int
-	seq   int
-	pconn *icmp.PacketConn
-	conn  *bufferConn
-	buf   []byte
+	pconn       *icmp.PacketConn
+	conn        *icmpConn
+	connectedCh chan struct{}
 }
 
 // NewClient creates a new Client
@@ -26,58 +21,57 @@ func NewClient() (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		id:    rand.Int(),
-		seq:   1,
-		pconn: pconn,
-		buf:   make([]byte, 32768),
+		pconn:       pconn,
+		connectedCh: make(chan struct{}, 1),
 	}, nil
 }
 
 // Connect create a connection to server.
 // When aesKey is nil, encryption is disabled.
 func (c *Client) Connect(server net.Addr, aesKey []byte) (net.Conn, error) {
-	c.conn = newBufferConn(c.pconn.LocalAddr(), server)
-	go c.mainloop()
+	c.conn = &icmpConn{
+		bufferConn: *newBufferConn(c.pconn.LocalAddr(), server),
+		readCh:     make(chan *icmp.Message, 100),
+		sendMsg:    c.sendMsg,
+		onClose:    func() {},
+		onConnect:  c.onConnect,
+	}
+	go c.conn.clientLoop()
+	go c.mainLoop()
+
+	<-c.connectedCh
+
 	if aesKey == nil {
 		return c.conn, nil
 	}
 	return newSecureConn(c.conn, aesKey)
 }
 
-func (c *Client) mainloop() {
-	connected := false
-	readCh := make(chan *icmp.Message, 5)
-	fmt.Println("Connecting...")
+func (c *Client) onConnect() {
+	c.connectedCh <- struct{}{}
+}
+
+func (c *Client) mainLoop() {
+	buf := make([]byte, 32768)
 	for {
-		n, err := c.conn.readOutBuf(c.buf)
-		check(err)
-
-		body := &icmp.Echo{
-			ID:   c.id,
-			Seq:  c.seq,
-			Data: c.buf[:n],
+		n, addr, err := c.pconn.ReadFrom(buf)
+		if err != nil {
+			panic(err)
 		}
-		msg := &icmp.Message{
-			Type: ipv4.ICMPTypeEcho,
-			Code: 0,
-			Body: body,
+		msg, err := icmp.ParseMessage(1, buf[:n])
+		if err != nil {
+			continue
 		}
-		err = c.sendMsg(msg)
-		check(err)
-
-		c.readMsgCh(readCh)
-		select {
-		case msg := <-readCh:
-			if connected == false {
-				connected = true
-				fmt.Print("Connected!\n\n")
-			}
-			if body, ok := msg.Body.(*icmp.Echo); ok {
-				c.conn.writeInBuf(body.Data)
-			}
-		case <-time.After(2 * time.Second):
+		if msg.Type != ipv4.ICMPTypeEchoReply {
+			continue
 		}
-		c.seq++
+		if addr.String() != c.conn.RemoteAddr().String() {
+			continue
+		}
+		msg, err = icmp.ParseMessage(1, buf[:n])
+		if err == nil {
+			c.conn.readCh <- msg
+		}
 	}
 }
 
@@ -88,31 +82,4 @@ func (c *Client) sendMsg(msg *icmp.Message) error {
 	}
 	_, err = c.pconn.WriteTo(b, c.conn.remoteAddr)
 	return err
-}
-
-func (c *Client) readMsgCh(ch chan<- *icmp.Message) {
-	go func() {
-		msg, err := c.readMsg()
-		check(err)
-		ch <- msg
-	}()
-}
-
-func (c *Client) readMsg() (*icmp.Message, error) {
-	for {
-		n, addr, err := c.pconn.ReadFrom(c.buf)
-		if err != nil {
-			return nil, err
-		}
-		if addr.String() != c.conn.RemoteAddr().String() {
-			continue
-		}
-		return icmp.ParseMessage(1, c.buf[:n])
-	}
-}
-
-func check(err error) {
-	if err != nil {
-		panic(err)
-	}
 }

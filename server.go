@@ -3,7 +3,6 @@ package icmpnet
 import (
 	"crypto/aes"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 
@@ -15,9 +14,9 @@ import (
 type Server struct {
 	aesKey []byte
 	pconn  *icmp.PacketConn
-	cpMtx  sync.RWMutex
 
-	sessions map[string]*session
+	connPool map[string]*icmpConn
+	cpMtx    sync.RWMutex
 	connCh   chan net.Conn
 
 	closed chan struct{}
@@ -40,7 +39,7 @@ func NewServer(aesKey []byte) (*Server, error) {
 	s := &Server{
 		aesKey:   aesKey,
 		pconn:    pconn,
-		sessions: make(map[string]*session),
+		connPool: make(map[string]*icmpConn),
 		connCh:   make(chan net.Conn, 100),
 	}
 	go s.mainLoop()
@@ -51,7 +50,9 @@ func (s *Server) mainLoop() {
 	buf := make([]byte, 32768)
 	for {
 		n, addr, err := s.pconn.ReadFrom(buf)
-		check(err)
+		if err != nil {
+			panic(err)
+		}
 		msg, err := icmp.ParseMessage(1, buf[:n])
 		if err != nil {
 			continue
@@ -59,26 +60,32 @@ func (s *Server) mainLoop() {
 		if msg.Type != ipv4.ICMPTypeEcho {
 			continue
 		}
-		sess := s.loadSession(addr.String())
-		if sess == nil {
-			sess = &session{
-				bufferConn: newBufferConn(s.pconn.LocalAddr(), addr),
-				readCh:     make(chan *icmp.Message, 100),
-				sendMsg:    s.sendTo(addr),
-				onClose:    s.onSessionClose(addr.String()),
-			}
+		conn := s.loadConn(addr.String())
+		if conn == nil {
+			conn = s.newICMPconn(addr)
+			s.storeConn(addr.String(), conn)
+
 			if s.aesKey == nil {
-				sess.conn = sess.bufferConn
+				s.emitNewConn(conn)
 			} else {
-				sess.conn, _ = newSecureConn(sess.bufferConn, s.aesKey)
+				sconn, _ := newSecureConn(conn, s.aesKey)
+				s.emitNewConn(sconn)
 			}
-			log.Printf("New Connection: %s\n", addr)
-			go sess.mainloop()
-			s.storeSession(addr.String(), sess)
-			s.emitNewConn(sess.conn)
 		}
-		sess.readCh <- msg
+		conn.readCh <- msg
 	}
+}
+
+func (s *Server) newICMPconn(addr net.Addr) *icmpConn {
+	conn := &icmpConn{
+		bufferConn: *newBufferConn(s.pconn.LocalAddr(), addr),
+		readCh:     make(chan *icmp.Message, 100),
+		sendMsg:    s.sendTo(addr),
+		onClose:    s.onConnClose(addr.String()),
+		onConnect:  func() {},
+	}
+	go conn.serverLoop()
+	return conn
 }
 
 func (s *Server) emitNewConn(conn net.Conn) {
@@ -105,7 +112,7 @@ func (s *Server) Close() error {
 		return fmt.Errorf("closed")
 	default:
 		close(s.closed)
-		conns := s.AllConns()
+		conns := s.allConns()
 		for _, conn := range conns {
 			conn.Close()
 		}
@@ -118,40 +125,38 @@ func (s *Server) Addr() net.Addr {
 	return s.pconn.LocalAddr()
 }
 
-// AllConns ...
-func (s *Server) AllConns() []net.Conn {
+func (s *Server) allConns() []*icmpConn {
 	s.cpMtx.RLock()
 	defer s.cpMtx.RUnlock()
-	ret := make([]net.Conn, 0, len(s.sessions))
-	for _, sess := range s.sessions {
-		ret = append(ret, sess.conn)
+	ret := make([]*icmpConn, 0, len(s.connPool))
+	for _, conn := range s.connPool {
+		ret = append(ret, conn)
 	}
 	return ret
 }
 
-func (s *Server) loadSession(key string) *session {
+func (s *Server) loadConn(key string) *icmpConn {
 	s.cpMtx.RLock()
 	defer s.cpMtx.RUnlock()
-	return s.sessions[key]
+	return s.connPool[key]
 }
 
-func (s *Server) storeSession(key string, conn *session) {
+func (s *Server) storeConn(key string, conn *icmpConn) {
 	s.cpMtx.Lock()
 	defer s.cpMtx.Unlock()
-	s.sessions[key] = conn
+	s.connPool[key] = conn
 }
 
-func (s *Server) onSessionClose(key string) func() {
+func (s *Server) onConnClose(key string) func() {
 	return func() {
-		log.Printf("Closed Connection: %s\n", key)
-		s.deleteSession(key)
+		s.deleteConn(key)
 	}
 }
 
-func (s *Server) deleteSession(key string) {
+func (s *Server) deleteConn(key string) {
 	s.cpMtx.Lock()
 	defer s.cpMtx.Unlock()
-	delete(s.sessions, key)
+	delete(s.connPool, key)
 }
 
 func (s *Server) sendTo(addr net.Addr) func(msg *icmp.Message) error {

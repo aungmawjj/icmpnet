@@ -11,7 +11,7 @@ import (
 )
 
 type secureConn struct {
-	*bufferConn
+	bufferConn
 	baseConn net.Conn
 	aesgcm   cipher.AEAD
 	aesKey   []byte
@@ -29,7 +29,7 @@ func newSecureConn(baseConn net.Conn, aesKey []byte) (*secureConn, error) {
 	}
 
 	sc := &secureConn{
-		bufferConn: newBufferConn(baseConn.LocalAddr(), baseConn.RemoteAddr()),
+		bufferConn: *newBufferConn(baseConn.LocalAddr(), baseConn.RemoteAddr()),
 		baseConn:   baseConn,
 		aesgcm:     aesgcm,
 		aesKey:     aesKey,
