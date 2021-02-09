@@ -4,6 +4,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/rpc"
+	"path"
 	"path/filepath"
 )
 
@@ -20,14 +21,27 @@ func NewClient(conn io.ReadWriteCloser) *Client {
 }
 
 // FileUpload uploads a file
-func (c *Client) FileUpload(filePath string) error {
-	data, err := ioutil.ReadFile(filePath)
+func (c *Client) FileUpload(filename string) error {
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
 	fp := &FilePayload{
-		Name: filepath.Base(filePath),
+		Name: filepath.Base(filename),
 		Data: data,
 	}
 	return c.rpcClient.Call(MethodFile+".Upload", fp, &struct{}{})
+}
+
+// FileDownload downloads a file
+func (c *Client) FileDownload(filename string, downloadDir string) error {
+	req := &FilePayload{
+		Name: filename,
+	}
+	resp := new(FilePayload)
+	err := c.rpcClient.Call(MethodFile+".Download", req, resp)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(path.Join(downloadDir, filename), resp.Data, 0644)
 }

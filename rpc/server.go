@@ -25,7 +25,7 @@ func NewServer(dirPath string) *Server {
 	return s
 }
 
-// Serve ...
+// Serve handle rpc requests connections from listeners
 func (s *Server) Serve(ln net.Listener) error {
 	for {
 		conn, err := ln.Accept()

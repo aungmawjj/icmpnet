@@ -32,17 +32,33 @@ func sendMessages(conn net.Conn, nickName string) {
 
 func main() {
 	var (
-		serverIP string
-		nickName string
-		password string
+		serverIP      string
+		password      string
+		inputServerIP string
+		inputPassword string
+		username      string
 	)
 	flag.StringVar(&serverIP, "server", "13.212.27.85", "server ip address")
 	flag.StringVar(&password, "pw", "password", "password")
-	flag.StringVar(&nickName, "name", "", "nick name")
 	flag.Parse()
 
-	if nickName == "" {
-		panic("must set a nick name")
+	fmt.Printf("Enter server ip [default = %s] >>  ", serverIP)
+	fmt.Scanln(&inputServerIP)
+	if inputServerIP != "" {
+		serverIP = inputServerIP
+	}
+
+	fmt.Printf("Enter password ip [default = %s] >>  ", password)
+	fmt.Scanln(&inputPassword)
+	if inputPassword != "" {
+		password = inputPassword
+	}
+
+	fmt.Print("Enter username >>  ")
+	fmt.Scanln(&username)
+	if username == "" {
+		fmt.Println("Must provide user name")
+		return
 	}
 
 	sum := sha256.Sum256([]byte(password))
@@ -57,7 +73,7 @@ func main() {
 	fmt.Print("Connected! Enter messages.\n\n")
 
 	go printIncoming(conn)
-	go sendMessages(conn, nickName)
+	go sendMessages(conn, username)
 	select {}
 }
 

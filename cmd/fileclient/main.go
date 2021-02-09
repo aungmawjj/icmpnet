@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"flag"
 	"fmt"
@@ -13,35 +12,77 @@ import (
 	"github.com/aungmawjj/icmpnet/rpc"
 )
 
-func printIncoming(conn net.Conn) {
-	r := bufio.NewReader(conn)
-	for {
-		msg, err := r.ReadString('\n')
-		check(err)
-		fmt.Printf(">> %s\n", msg)
-	}
+type endProgressFunc func()
+
+func showProgress() endProgressFunc {
+	end := make(chan struct{}, 1)
+	go func() {
+		for {
+			select {
+			case <-end:
+				return
+			case <-time.After(300 * time.Millisecond):
+				fmt.Print(".")
+			}
+		}
+	}()
+	return func() { close(end) }
 }
 
-func sendMessages(conn net.Conn, nickName string) {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		msg, err := reader.ReadString('\n')
-		check(err)
-		_, err = fmt.Fprintf(conn, "[ %s ] >>  %s", nickName, msg)
-		check(err)
-	}
+func uploadFile(client *rpc.Client) {
+	var filename string
+	fmt.Print("Enter file path >>  ")
+	fmt.Scanln(&filename)
+
+	endP := showProgress()
+	err := client.FileUpload(filename)
+	endP()
+	check(err)
+
+	fmt.Print("\n\n")
+	fmt.Println("File upload successful!")
+}
+
+func downloadFile(client *rpc.Client) {
+	var filename string
+	fmt.Print("Enter file name >>  ")
+	fmt.Scanln(&filename)
+
+	dir, err := os.Getwd()
+	check(err)
+
+	endP := showProgress()
+	err = client.FileDownload(filename, dir)
+	endP()
+	check(err)
+
+	fmt.Print("\n\n")
+	fmt.Println("File download successful!")
 }
 
 func main() {
 	var (
-		serverIP string
-		password string
-		filepath string
+		serverIP      string
+		password      string
+		inputServerIP string
+		inputPassword string
+		mode          int
 	)
 	flag.StringVar(&serverIP, "server", "13.212.27.85", "server ip address")
 	flag.StringVar(&password, "pw", "password", "password")
-	flag.StringVar(&filepath, "path", "", "file path")
 	flag.Parse()
+
+	fmt.Printf("Enter server ip [default = %s] >>  ", serverIP)
+	fmt.Scanln(&inputServerIP)
+	if inputServerIP != "" {
+		serverIP = inputServerIP
+	}
+
+	fmt.Printf("Enter password ip [default = %s] >>  ", password)
+	fmt.Scanln(&inputPassword)
+	if inputPassword != "" {
+		password = inputPassword
+	}
 
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
@@ -54,24 +95,19 @@ func main() {
 	check(err)
 	fmt.Print("Connected! Uploading File...\n\n")
 
-	endProgress := make(chan struct{}, 1)
-	go func() {
-		for {
-			select {
-			case <-endProgress:
-				return
-			case <-time.After(500 * time.Millisecond):
-				fmt.Print(".")
-			}
-		}
-	}()
-
 	rpcClient := rpc.NewClient(conn)
-	err = rpcClient.FileUpload(filepath)
-	endProgress <- struct{}{}
-	fmt.Print("\n\n")
-	check(err)
-	fmt.Println("File upload successful!")
+
+	fmt.Print("Select mode Upload = 1, Download = 2 >>  ")
+	fmt.Scanln(&mode)
+	switch mode {
+	case 1:
+		uploadFile(rpcClient)
+	case 2:
+		downloadFile(rpcClient)
+	default:
+		fmt.Println("Unknown mode")
+	}
+
 }
 
 func check(err error) {
