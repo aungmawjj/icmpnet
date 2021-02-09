@@ -41,33 +41,35 @@ func (ic *icmpConn) serverLoop() {
 		ic.host.onConnClose(ic)
 	}()
 
-	prevSeq := 0
+	var (
+		n    int
+		body *icmp.Echo
+		ok   bool
+		err  error
+	)
 
+	prevSeq := 0
 	buf := make([]byte, 4096)
+
 	for {
 		select {
 		case msg := <-ic.readCh:
-			var (
-				n    int
-				body *icmp.Echo
-				ok   bool
-				err  error
-			)
+			isNewMsg := false
 			body, ok = msg.Body.(*icmp.Echo)
 			if ok {
-				if body.Seq > prevSeq {
+				if body.Seq == prevSeq+1 || body.Seq == 1 {
+					isNewMsg = true
+					prevSeq = body.Seq
 					ic.writeInBuf(body.Data)
 				}
 			}
 
-			if body.Seq > prevSeq {
+			if isNewMsg {
 				n, err = ic.readOutBuf(buf)
 				if err != nil {
 					return
 				}
 			}
-
-			prevSeq = body.Seq
 
 			if n == 0 && len(body.Data) == 0 {
 				time.Sleep(300 * time.Millisecond)
@@ -93,22 +95,23 @@ func (ic *icmpConn) clientLoop() {
 		ic.host.onConnClose(ic)
 	}()
 
+	var (
+		n   int
+		err error
+	)
+
 	id := rand.Int()
 	seq := 1
 	prevSeq := 0
-
 	buf := make([]byte, 4096)
+
 	for {
-		var (
-			n   int
-			err error
-		)
-		if seq > prevSeq {
+		if seq == prevSeq+1 {
+			prevSeq = seq
 			n, err = ic.readOutBuf(buf)
 			if err != nil {
 				return
 			}
-			prevSeq = seq
 		}
 		body := &icmp.Echo{
 			ID:   id,
@@ -128,10 +131,12 @@ func (ic *icmpConn) clientLoop() {
 		select {
 		case msg := <-ic.readCh:
 			if body, ok := msg.Body.(*icmp.Echo); ok {
-				ic.writeInBuf(body.Data)
+				if seq == body.Seq {
+					ic.writeInBuf(body.Data)
+					seq++
+				}
 			}
-			seq++
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			// fmt.Println("packet may lost")
 		}
 	}
