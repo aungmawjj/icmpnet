@@ -24,7 +24,7 @@ Implemented Use-case applications:
 
 Broker
 ```sh
-// stop auto reply ping messages for linux
+# stop auto reply ping messages for linux
 echo 1 | sudo dd of=/proc/sys/net/ipv4/icmp_echo_ignore_all
 sudo ./bin/msgbroker -pw <password>
 ```
@@ -38,7 +38,7 @@ sudo ./bin/msgclient -server <serverIP> -pw <password> -name <Your Name>
 
 Server
 ```sh
-// stop auto reply ping messages for linux
+# stop auto reply ping messages for linux
 echo 1 | sudo dd of=/proc/sys/net/ipv4/icmp_echo_ignore_all
 sudo ./bin/fileserver -pw <password> -dir <file_directory>
 ```
