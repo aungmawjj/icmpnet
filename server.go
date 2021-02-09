@@ -22,7 +22,7 @@ type server struct {
 }
 
 // Listen creates a new icmp listener (server).
-// When aesKey is nil, encryption is disabled.
+// If aesKey is nil, encryption is disabled.
 func Listen(aesKey []byte) (net.Listener, error) {
 	// verify aesKey
 	if aesKey != nil {
@@ -95,31 +95,22 @@ func (s *server) mainLoop() {
 			}
 			conn := s.loadConn(addr.String())
 			if conn == nil {
-				conn = s.newICMPconn(addr)
+				conn = newICMPconn(s, addr, true)
 				s.storeConn(addr.String(), conn)
-
-				if s.aesKey == nil {
-					s.emitNewConn(conn)
-				} else {
-					sconn, _ := newSecureConn(conn, s.aesKey)
-					s.emitNewConn(sconn)
-				}
+				s.onConnect(conn)
 			}
 			conn.readCh <- msg
 		}
 	}
 }
 
-func (s *server) newICMPconn(addr net.Addr) *icmpConn {
-	conn := &icmpConn{
-		bufferConn: *newBufferConn(s.pconn.LocalAddr(), addr),
-		readCh:     make(chan *icmp.Message, 100),
-		sendMsg:    s.sendTo(addr),
-		onClose:    s.onConnClose(addr.String()),
-		onConnect:  func() {},
+func (s *server) onConnect(conn *icmpConn) {
+	if s.aesKey == nil {
+		s.emitNewConn(conn)
+	} else {
+		sconn, _ := newSecureConn(conn, s.aesKey)
+		s.emitNewConn(sconn)
 	}
-	go conn.serverLoop()
-	return conn
 }
 
 func (s *server) emitNewConn(conn net.Conn) {
@@ -127,6 +118,10 @@ func (s *server) emitNewConn(conn net.Conn) {
 	case s.connCh <- conn:
 	default:
 	}
+}
+
+func (s *server) localAddr() net.Addr {
+	return s.pconn.LocalAddr()
 }
 
 func (s *server) allConns() []*icmpConn {
@@ -151,10 +146,8 @@ func (s *server) storeConn(key string, conn *icmpConn) {
 	s.connPool[key] = conn
 }
 
-func (s *server) onConnClose(key string) func() {
-	return func() {
-		s.deleteConn(key)
-	}
+func (s *server) onConnClose(conn *icmpConn) {
+	s.deleteConn(conn.RemoteAddr().String())
 }
 
 func (s *server) deleteConn(key string) {
@@ -163,13 +156,11 @@ func (s *server) deleteConn(key string) {
 	delete(s.connPool, key)
 }
 
-func (s *server) sendTo(addr net.Addr) func(msg *icmp.Message) error {
-	return func(msg *icmp.Message) error {
-		b, err := msg.Marshal(nil)
-		if err != nil {
-			return err
-		}
-		_, err = s.pconn.WriteTo(b, addr)
+func (s *server) sendMsg(msg *icmp.Message, addr net.Addr) error {
+	b, err := msg.Marshal(nil)
+	if err != nil {
 		return err
 	}
+	_, err = s.pconn.WriteTo(b, addr)
+	return err
 }

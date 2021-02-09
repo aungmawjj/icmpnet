@@ -2,24 +2,43 @@ package icmpnet
 
 import (
 	"math/rand"
+	"net"
 	"time"
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 )
 
+type host interface {
+	sendMsg(msg *icmp.Message, addr net.Addr) error
+	onConnClose(conn *icmpConn)
+	localAddr() net.Addr
+}
+
 type icmpConn struct {
 	bufferConn
-	readCh    chan *icmp.Message
-	sendMsg   func(msg *icmp.Message) error
-	onClose   func()
-	onConnect func()
+	readCh chan *icmp.Message
+	host   host
+}
+
+func newICMPconn(h host, addr net.Addr, server bool) *icmpConn {
+	ic := &icmpConn{
+		bufferConn: *newBufferConn(h.localAddr(), addr),
+		readCh:     make(chan *icmp.Message, 100),
+		host:       h,
+	}
+	if server {
+		go ic.serverLoop()
+	} else {
+		go ic.clientLoop()
+	}
+	return ic
 }
 
 func (ic *icmpConn) serverLoop() {
 	defer func() {
 		ic.Close()
-		ic.onClose()
+		ic.host.onConnClose(ic)
 	}()
 
 	prevSeq := 0
@@ -56,7 +75,7 @@ func (ic *icmpConn) serverLoop() {
 
 			body.Data = buf[:n]
 			msg.Type = ipv4.ICMPTypeEchoReply
-			err = ic.sendMsg(msg)
+			err = ic.host.sendMsg(msg, ic.remoteAddr)
 			if err != nil {
 				return
 			}
@@ -71,7 +90,7 @@ func (ic *icmpConn) serverLoop() {
 func (ic *icmpConn) clientLoop() {
 	defer func() {
 		ic.Close()
-		ic.onClose()
+		ic.host.onConnClose(ic)
 	}()
 
 	id := rand.Int()
@@ -101,16 +120,13 @@ func (ic *icmpConn) clientLoop() {
 			Code: 0,
 			Body: body,
 		}
-		err = ic.sendMsg(msg)
+		err = ic.host.sendMsg(msg, ic.remoteAddr)
 		if err != nil {
 			return
 		}
 
 		select {
 		case msg := <-ic.readCh:
-			if seq == 1 {
-				ic.onConnect()
-			}
 			if body, ok := msg.Body.(*icmp.Echo); ok {
 				ic.writeInBuf(body.Data)
 			}

@@ -18,8 +18,8 @@ type bufferConn struct {
 	inMtx  sync.Mutex
 	outMtx sync.Mutex
 
-	inCh   chan struct{}
-	closed chan struct{}
+	inCh     chan struct{}
+	closedCh chan struct{}
 }
 
 var _ net.Conn = (*bufferConn)(nil)
@@ -30,19 +30,19 @@ func newBufferConn(localAddr, remoteAddr net.Addr) *bufferConn {
 		inBuf:      bytes.NewBuffer(nil),
 		outBuf:     bytes.NewBuffer(nil),
 		inCh:       make(chan struct{}),
-		closed:     make(chan struct{}),
+		closedCh:   make(chan struct{}),
 	}
 }
 
 func (c *bufferConn) Read(b []byte) (n int, err error) {
 	select {
-	case <-c.closed:
+	case <-c.closedCh:
 		return 0, io.EOF
 	default:
 		n, err = c.readInBuf(b)
 		if err == io.EOF {
 			select {
-			case <-c.closed:
+			case <-c.closedCh:
 				return 0, io.EOF
 			case <-c.inCh:
 				return c.Read(b)
@@ -71,7 +71,7 @@ func (c *bufferConn) writeInBuf(b []byte) (n int, err error) {
 
 func (c *bufferConn) Write(b []byte) (n int, err error) {
 	select {
-	case <-c.closed:
+	case <-c.closedCh:
 		return 0, io.ErrClosedPipe
 	default:
 		return c.writeOutBuf(b)
@@ -97,10 +97,10 @@ func (c *bufferConn) readOutBuf(b []byte) (n int, err error) {
 
 func (c *bufferConn) Close() error {
 	select {
-	case <-c.closed:
+	case <-c.closedCh:
 		return io.ErrClosedPipe
 	default:
-		close(c.closed)
+		close(c.closedCh)
 		c.inBuf.Reset()
 		c.outBuf.Reset()
 		return nil

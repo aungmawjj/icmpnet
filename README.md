@@ -1,7 +1,7 @@
 # Messaging over ICMP
 [![GoDoc](https://godoc.org/github.com/aungmawjj/icmpnet?status.svg)](https://pkg.go.dev/github.com/aungmawjj/icmpnet#section-documentation)
 
-Implementation of client/server bidirectional messaging over ICMP protocol using golang.
+Implementation of client/server bidirectional messaging over ICMP protocol.
 
 Messaging over ICMP is useful - when your network (wifi) gives you an IP address, but won't let you send TCP or UDP packets out to the rest of the internet, but allow you to ping any computer on the internet.
 

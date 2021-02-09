@@ -15,7 +15,7 @@ type client struct {
 }
 
 // Connect create a connection to server.
-// When aesKey is nil, encryption is disabled.
+// If aesKey is nil, encryption is disabled.
 func Connect(server net.Addr, aesKey []byte) (net.Conn, error) {
 	pconn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
@@ -27,15 +27,7 @@ func Connect(server net.Addr, aesKey []byte) (net.Conn, error) {
 	}
 	go c.mainLoop()
 
-	c.conn = &icmpConn{
-		bufferConn: *newBufferConn(c.pconn.LocalAddr(), server),
-		readCh:     make(chan *icmp.Message, 100),
-		sendMsg:    c.sendMsg,
-		onClose:    c.onClose,
-		onConnect:  c.onConnect,
-	}
-	go c.conn.clientLoop()
-
+	c.conn = newICMPconn(c, server, false)
 	<-c.connectedCh
 
 	if aesKey == nil {
@@ -44,11 +36,15 @@ func Connect(server net.Addr, aesKey []byte) (net.Conn, error) {
 	return newSecureConn(c.conn, aesKey)
 }
 
+func (c *client) localAddr() net.Addr {
+	return c.pconn.LocalAddr()
+}
+
 func (c *client) onConnect() {
 	c.connectedCh <- struct{}{}
 }
 
-func (c *client) onClose() {
+func (c *client) onConnClose(conn *icmpConn) {
 	select {
 	case <-c.closedCh:
 	default:
@@ -58,6 +54,7 @@ func (c *client) onClose() {
 
 func (c *client) mainLoop() {
 	buf := make([]byte, 5000)
+	connected := false
 	for {
 		select {
 		case <-c.closedCh:
@@ -79,17 +76,21 @@ func (c *client) mainLoop() {
 			}
 			msg, err = icmp.ParseMessage(1, buf[:n])
 			if err == nil {
+				if !connected {
+					connected = true
+					c.onConnect()
+				}
 				c.conn.readCh <- msg
 			}
 		}
 	}
 }
 
-func (c *client) sendMsg(msg *icmp.Message) error {
+func (c *client) sendMsg(msg *icmp.Message, addr net.Addr) error {
 	b, err := msg.Marshal(nil)
 	if err != nil {
 		return err
 	}
-	_, err = c.pconn.WriteTo(b, c.conn.remoteAddr)
+	_, err = c.pconn.WriteTo(b, addr)
 	return err
 }
