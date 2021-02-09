@@ -17,11 +17,11 @@ func main() {
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
 
-	server, err := icmpnet.NewServer(aesKey)
+	ln, err := icmpnet.Listen(aesKey)
 	check(err)
 	b := broker.New()
 	fmt.Println("Message broker started!")
-	err = b.Serve(server)
+	err = b.Serve(ln)
 	check(err)
 }
 

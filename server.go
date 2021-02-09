@@ -10,8 +10,7 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-// Server type
-type Server struct {
+type server struct {
 	aesKey []byte
 	pconn  *icmp.PacketConn
 
@@ -19,12 +18,12 @@ type Server struct {
 	cpMtx    sync.RWMutex
 	connCh   chan net.Conn
 
-	closed chan struct{}
+	closedCh chan struct{}
 }
 
-// NewServer create a new Server.
+// Listen creates a new icmp listener (server).
 // When aesKey is nil, encryption is disabled.
-func NewServer(aesKey []byte) (*Server, error) {
+func Listen(aesKey []byte) (net.Listener, error) {
 	// verify aesKey
 	if aesKey != nil {
 		if _, err := aes.NewCipher(aesKey); err != nil {
@@ -36,7 +35,7 @@ func NewServer(aesKey []byte) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{
+	s := &server{
 		aesKey:   aesKey,
 		pconn:    pconn,
 		connPool: make(map[string]*icmpConn),
@@ -46,37 +45,72 @@ func NewServer(aesKey []byte) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) mainLoop() {
-	buf := make([]byte, 5000)
-	for {
-		n, addr, err := s.pconn.ReadFrom(buf)
-		if err != nil {
-			panic(err)
-		}
-		msg, err := icmp.ParseMessage(1, buf[:n])
-		if err != nil {
-			continue
-		}
-		if msg.Type != ipv4.ICMPTypeEcho {
-			continue
-		}
-		conn := s.loadConn(addr.String())
-		if conn == nil {
-			conn = s.newICMPconn(addr)
-			s.storeConn(addr.String(), conn)
-
-			if s.aesKey == nil {
-				s.emitNewConn(conn)
-			} else {
-				sconn, _ := newSecureConn(conn, s.aesKey)
-				s.emitNewConn(sconn)
-			}
-		}
-		conn.readCh <- msg
+// Accept implements net.Listener
+func (s *server) Accept() (net.Conn, error) {
+	select {
+	case conn := <-s.connCh:
+		return conn, nil
+	case <-s.closedCh:
+		return nil, fmt.Errorf("closedCh")
 	}
 }
 
-func (s *Server) newICMPconn(addr net.Addr) *icmpConn {
+// Close implements net.Listener
+func (s *server) Close() error {
+	select {
+	case <-s.closedCh:
+		return fmt.Errorf("closedCh")
+	default:
+		close(s.closedCh)
+		conns := s.allConns()
+		for _, conn := range conns {
+			conn.Close()
+		}
+		return nil
+	}
+}
+
+// Addr implements net.Listener
+func (s *server) Addr() net.Addr {
+	return s.pconn.LocalAddr()
+}
+
+func (s *server) mainLoop() {
+	buf := make([]byte, 5000)
+	for {
+		select {
+		case <-s.closedCh:
+			return
+		default:
+			n, addr, err := s.pconn.ReadFrom(buf)
+			if err != nil {
+				panic(err)
+			}
+			msg, err := icmp.ParseMessage(1, buf[:n])
+			if err != nil {
+				continue
+			}
+			if msg.Type != ipv4.ICMPTypeEcho {
+				continue
+			}
+			conn := s.loadConn(addr.String())
+			if conn == nil {
+				conn = s.newICMPconn(addr)
+				s.storeConn(addr.String(), conn)
+
+				if s.aesKey == nil {
+					s.emitNewConn(conn)
+				} else {
+					sconn, _ := newSecureConn(conn, s.aesKey)
+					s.emitNewConn(sconn)
+				}
+			}
+			conn.readCh <- msg
+		}
+	}
+}
+
+func (s *server) newICMPconn(addr net.Addr) *icmpConn {
 	conn := &icmpConn{
 		bufferConn: *newBufferConn(s.pconn.LocalAddr(), addr),
 		readCh:     make(chan *icmp.Message, 100),
@@ -88,44 +122,14 @@ func (s *Server) newICMPconn(addr net.Addr) *icmpConn {
 	return conn
 }
 
-func (s *Server) emitNewConn(conn net.Conn) {
+func (s *server) emitNewConn(conn net.Conn) {
 	select {
 	case s.connCh <- conn:
 	default:
 	}
 }
 
-// Accept implements net.Listener
-func (s *Server) Accept() (net.Conn, error) {
-	select {
-	case conn := <-s.connCh:
-		return conn, nil
-	case <-s.closed:
-		return nil, fmt.Errorf("closed")
-	}
-}
-
-// Close implements net.Listener
-func (s *Server) Close() error {
-	select {
-	case <-s.closed:
-		return fmt.Errorf("closed")
-	default:
-		close(s.closed)
-		conns := s.allConns()
-		for _, conn := range conns {
-			conn.Close()
-		}
-		return nil
-	}
-}
-
-// Addr implements net.Listener
-func (s *Server) Addr() net.Addr {
-	return s.pconn.LocalAddr()
-}
-
-func (s *Server) allConns() []*icmpConn {
+func (s *server) allConns() []*icmpConn {
 	s.cpMtx.RLock()
 	defer s.cpMtx.RUnlock()
 	ret := make([]*icmpConn, 0, len(s.connPool))
@@ -135,31 +139,31 @@ func (s *Server) allConns() []*icmpConn {
 	return ret
 }
 
-func (s *Server) loadConn(key string) *icmpConn {
+func (s *server) loadConn(key string) *icmpConn {
 	s.cpMtx.RLock()
 	defer s.cpMtx.RUnlock()
 	return s.connPool[key]
 }
 
-func (s *Server) storeConn(key string, conn *icmpConn) {
+func (s *server) storeConn(key string, conn *icmpConn) {
 	s.cpMtx.Lock()
 	defer s.cpMtx.Unlock()
 	s.connPool[key] = conn
 }
 
-func (s *Server) onConnClose(key string) func() {
+func (s *server) onConnClose(key string) func() {
 	return func() {
 		s.deleteConn(key)
 	}
 }
 
-func (s *Server) deleteConn(key string) {
+func (s *server) deleteConn(key string) {
 	s.cpMtx.Lock()
 	defer s.cpMtx.Unlock()
 	delete(s.connPool, key)
 }
 
-func (s *Server) sendTo(addr net.Addr) func(msg *icmp.Message) error {
+func (s *server) sendTo(addr net.Addr) func(msg *icmp.Message) error {
 	return func(msg *icmp.Message) error {
 		b, err := msg.Marshal(nil)
 		if err != nil {

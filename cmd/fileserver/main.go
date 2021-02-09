@@ -21,12 +21,12 @@ func main() {
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
 
-	icmpServer, err := icmpnet.NewServer(aesKey)
+	ln, err := icmpnet.Listen(aesKey)
 	check(err)
 
 	rpcServer := rpc.NewServer(dirPath)
 	fmt.Println("File server started!")
-	err = rpcServer.Serve(icmpServer)
+	err = rpcServer.Serve(ln)
 	check(err)
 }
 

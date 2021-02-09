@@ -48,14 +48,11 @@ func main() {
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
 
-	client, err := icmpnet.NewClient()
-	check(err)
-
 	addr, err := net.ResolveIPAddr("ip4", serverIP)
 	check(err)
 
 	fmt.Printf("Connecting: %s ...\n", addr)
-	conn, err := client.Connect(addr, aesKey)
+	conn, err := icmpnet.Connect(addr, aesKey)
 	check(err)
 	fmt.Print("Connected! Enter messages.\n\n")
 
