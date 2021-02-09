@@ -1,5 +1,5 @@
 # Messaging over ICMP
-[![GoDoc](https://godoc.org/github.com/aungmawjj/icmpnet?status.svg)](https://pkg.go.dev/github.com/aungmawjj/icmpnet?tab=doc)
+[![GoDoc](https://godoc.org/github.com/aungmawjj/icmpnet?status.svg)](https://pkg.go.dev/github.com/aungmawjj/icmpnet#section-documentation)
 
 Implementation of client/server bidirectional messaging over ICMP protocol using golang.
 
@@ -50,7 +50,7 @@ sudo ./bin/fileclient -server <serverIP> -pw <password> -path <filepath>
 
 
 ## Using the API
-[Reference](https://pkg.go.dev/github.com/aungmawjj/icmpnet?tab=doc)
+[Reference](https://pkg.go.dev/github.com/aungmawjj/icmpnet#section-documentation)
 
 Listen connections at server
 ```go
