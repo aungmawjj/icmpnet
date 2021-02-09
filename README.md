@@ -11,7 +11,7 @@ Features:
 
 Implemented Use-case applications:
 - Message broker and client (each message is a single line)
-- File upload (used rpc to upload file and respond status)
+- File transfer (used rpc to upload/download file and respond status)
 
 ## Build
 ```sh
@@ -31,10 +31,10 @@ sudo ./bin/msgbroker -pw <password>
 
 Client
 ```sh
-sudo ./bin/msgclient -server <serverIP> -pw <password> -name <Your Name>
+sudo ./bin/msgclient
 ```
 
-### File Upload Application
+### File Transfer Application
 
 Server
 ```sh
@@ -45,7 +45,7 @@ sudo ./bin/fileserver -pw <password> -dir <file_directory>
 
 Client
 ```sh
-sudo ./bin/fileclient -server <serverIP> -pw <password> -path <filepath>
+sudo ./bin/fileclient
 ```
 
 
