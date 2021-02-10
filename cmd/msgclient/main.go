@@ -75,7 +75,7 @@ func main() {
 	fmt.Printf("Connecting: %s ...\n", addr)
 	conn, err := icmpnet.Connect(addr, aesKey)
 	check(err)
-	fmt.Print("Connected! Enter messages.\n\n")
+	fmt.Print("Connected!\n\n")
 
 	go printIncoming(conn)
 	go sendMessages(conn, username)

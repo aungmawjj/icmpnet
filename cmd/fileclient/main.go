@@ -93,7 +93,6 @@ func main() {
 	fmt.Printf("Connecting: %s ...\n", addr)
 	conn, err := icmpnet.Connect(addr, aesKey)
 	check(err)
-	fmt.Print("Connected! Uploading File...\n\n")
 
 	rpcClient := rpc.NewClient(conn)
 
