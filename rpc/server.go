@@ -32,7 +32,14 @@ func (s *Server) Serve(ln net.Listener) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("New Connection: %s\n", conn.RemoteAddr())
-		go s.rpcServer.ServeConn(conn)
+		go s.ServeConn(conn)
 	}
+}
+
+// ServeConn serves a connection.
+// It blocks until the connection is closed.
+func (s *Server) ServeConn(conn net.Conn) {
+	log.Printf("Connected: %s\n", conn.RemoteAddr())
+	s.rpcServer.ServeConn(conn)
+	log.Printf("Disconnected: %s\n", conn.RemoteAddr())
 }
