@@ -14,9 +14,9 @@ type server struct {
 	aesKey []byte
 	pconn  *icmp.PacketConn
 
-	connPool map[string]*icmpConn
-	cpMtx    sync.RWMutex
-	connCh   chan net.Conn
+	connPool  map[string]*icmpConn
+	cpMtx     sync.RWMutex
+	newConnCh chan net.Conn
 
 	closedCh chan struct{}
 }
@@ -36,10 +36,10 @@ func Listen(aesKey []byte) (net.Listener, error) {
 		return nil, err
 	}
 	s := &server{
-		aesKey:   aesKey,
-		pconn:    pconn,
-		connPool: make(map[string]*icmpConn),
-		connCh:   make(chan net.Conn, 100),
+		aesKey:    aesKey,
+		pconn:     pconn,
+		connPool:  make(map[string]*icmpConn),
+		newConnCh: make(chan net.Conn, 100),
 	}
 	go s.mainLoop()
 	return s, nil
@@ -48,7 +48,7 @@ func Listen(aesKey []byte) (net.Listener, error) {
 // Accept implements net.Listener
 func (s *server) Accept() (net.Conn, error) {
 	select {
-	case conn := <-s.connCh:
+	case conn := <-s.newConnCh:
 		return conn, nil
 	case <-s.closedCh:
 		return nil, fmt.Errorf("closedCh")
@@ -93,15 +93,34 @@ func (s *server) mainLoop() {
 			if msg.Type != ipv4.ICMPTypeEcho {
 				continue
 			}
-			conn := s.loadConn(addr.String())
-			if conn == nil {
-				conn = newICMPconn(s, addr, true)
-				s.storeConn(addr.String(), conn)
-				s.onConnect(conn)
+			if body, ok := msg.Body.(*icmp.Echo); ok {
+				conn := s.loadConn(icmpConnKey(addr, body.ID))
+				if conn == nil {
+					conn = newICMPServerConn(s, body.ID, addr)
+					s.storeConn(conn.String(), conn)
+					s.onConnect(conn)
+				}
+				conn.readCh <- msg
 			}
-			conn.readCh <- msg
 		}
 	}
+}
+
+func (s *server) localAddr() net.Addr {
+	return s.pconn.LocalAddr()
+}
+
+func (s *server) onConnClose(conn *icmpConn) {
+	s.deleteConn(conn.String())
+}
+
+func (s *server) sendMsg(msg *icmp.Message, addr net.Addr) error {
+	b, err := msg.Marshal(nil)
+	if err != nil {
+		return err
+	}
+	_, err = s.pconn.WriteTo(b, addr)
+	return err
 }
 
 func (s *server) onConnect(conn *icmpConn) {
@@ -115,13 +134,9 @@ func (s *server) onConnect(conn *icmpConn) {
 
 func (s *server) emitNewConn(conn net.Conn) {
 	select {
-	case s.connCh <- conn:
+	case s.newConnCh <- conn:
 	default:
 	}
-}
-
-func (s *server) localAddr() net.Addr {
-	return s.pconn.LocalAddr()
 }
 
 func (s *server) allConns() []*icmpConn {
@@ -146,21 +161,8 @@ func (s *server) storeConn(key string, conn *icmpConn) {
 	s.connPool[key] = conn
 }
 
-func (s *server) onConnClose(conn *icmpConn) {
-	s.deleteConn(conn.RemoteAddr().String())
-}
-
 func (s *server) deleteConn(key string) {
 	s.cpMtx.Lock()
 	defer s.cpMtx.Unlock()
 	delete(s.connPool, key)
-}
-
-func (s *server) sendMsg(msg *icmp.Message, addr net.Addr) error {
-	b, err := msg.Marshal(nil)
-	if err != nil {
-		return err
-	}
-	_, err = s.pconn.WriteTo(b, addr)
-	return err
 }

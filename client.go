@@ -1,6 +1,7 @@
 package icmpnet
 
 import (
+	"math/rand"
 	"net"
 
 	"golang.org/x/net/icmp"
@@ -27,29 +28,13 @@ func Connect(server net.Addr, aesKey []byte) (net.Conn, error) {
 	}
 	go c.mainLoop()
 
-	c.conn = newICMPconn(c, server, false)
+	c.conn = newICMPClientConn(c, rand.Int(), server)
 	<-c.connectedCh
 
 	if aesKey == nil {
 		return c.conn, nil
 	}
 	return newSecureConn(c.conn, aesKey)
-}
-
-func (c *client) localAddr() net.Addr {
-	return c.pconn.LocalAddr()
-}
-
-func (c *client) onConnect() {
-	c.connectedCh <- struct{}{}
-}
-
-func (c *client) onConnClose(conn *icmpConn) {
-	select {
-	case <-c.closedCh:
-	default:
-		close(c.closedCh)
-	}
 }
 
 func (c *client) mainLoop() {
@@ -75,14 +60,32 @@ func (c *client) mainLoop() {
 				continue
 			}
 			msg, err = icmp.ParseMessage(1, buf[:n])
-			if err == nil {
+			if err != nil {
+				continue
+			}
+			if body, ok := msg.Body.(*icmp.Echo); ok {
+				if body.ID != c.conn.ID() {
+					continue
+				}
 				if !connected {
 					connected = true
-					c.onConnect()
+					c.connectedCh <- struct{}{}
 				}
 				c.conn.readCh <- msg
 			}
 		}
+	}
+}
+
+func (c *client) localAddr() net.Addr {
+	return c.pconn.LocalAddr()
+}
+
+func (c *client) onConnClose(conn *icmpConn) {
+	select {
+	case <-c.closedCh:
+	default:
+		close(c.closedCh)
 	}
 }
 

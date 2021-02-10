@@ -26,6 +26,7 @@ var _ net.Conn = (*bufferConn)(nil)
 
 func newBufferConn(localAddr, remoteAddr net.Addr) *bufferConn {
 	return &bufferConn{
+		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
 		inBuf:      bytes.NewBuffer(nil),
 		outBuf:     bytes.NewBuffer(nil),

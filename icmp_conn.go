@@ -1,7 +1,7 @@
 package icmpnet
 
 import (
-	"math/rand"
+	"fmt"
 	"net"
 	"time"
 
@@ -17,21 +17,30 @@ type host interface {
 
 type icmpConn struct {
 	bufferConn
+	id     uint16
 	readCh chan *icmp.Message
 	host   host
 }
 
-func newICMPconn(h host, addr net.Addr, server bool) *icmpConn {
+func newICMPConn(h host, id int, addr net.Addr) *icmpConn {
 	ic := &icmpConn{
 		bufferConn: *newBufferConn(h.localAddr(), addr),
+		id:         uint16(id),
 		readCh:     make(chan *icmp.Message, 100),
 		host:       h,
 	}
-	if server {
-		go ic.serverLoop()
-	} else {
-		go ic.clientLoop()
-	}
+	return ic
+}
+
+func newICMPServerConn(h host, id int, addr net.Addr) *icmpConn {
+	ic := newICMPConn(h, id, addr)
+	go ic.serverLoop()
+	return ic
+}
+
+func newICMPClientConn(h host, id int, addr net.Addr) *icmpConn {
+	ic := newICMPConn(h, id, addr)
+	go ic.clientLoop()
 	return ic
 }
 
@@ -100,7 +109,6 @@ func (ic *icmpConn) clientLoop() {
 		err error
 	)
 
-	id := rand.Int()
 	seq := 1
 	prevSeq := 0
 	buf := make([]byte, 4096)
@@ -114,7 +122,7 @@ func (ic *icmpConn) clientLoop() {
 			}
 		}
 		body := &icmp.Echo{
-			ID:   id,
+			ID:   int(ic.id),
 			Seq:  seq,
 			Data: buf[:n],
 		}
@@ -137,7 +145,19 @@ func (ic *icmpConn) clientLoop() {
 				}
 			}
 		case <-time.After(2 * time.Second):
-			// fmt.Println("packet may lost")
+			// fmt.Println("not received reply")
 		}
 	}
+}
+
+func (ic *icmpConn) String() string {
+	return icmpConnKey(ic.remoteAddr, ic.ID())
+}
+
+func (ic *icmpConn) ID() int {
+	return int(ic.id)
+}
+
+func icmpConnKey(remoteAddr net.Addr, id int) string {
+	return fmt.Sprintf("%s-%d", remoteAddr.String(), id)
 }

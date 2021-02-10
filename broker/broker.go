@@ -3,20 +3,21 @@ package broker
 import (
 	"bufio"
 	"log"
+	"math/rand"
 	"net"
 	"sync"
 )
 
 // Broker type
 type Broker struct {
-	connPool map[string]net.Conn
+	connPool map[int]net.Conn
 	cpMtx    sync.RWMutex
 }
 
 // New create a new Broker
 func New() *Broker {
 	return &Broker{
-		connPool: make(map[string]net.Conn, 100),
+		connPool: make(map[int]net.Conn, 100),
 	}
 }
 
@@ -27,14 +28,22 @@ func (b *Broker) Serve(ln net.Listener) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("Connected: %s\n", conn.RemoteAddr())
-		b.storeConn(conn.RemoteAddr().String(), conn)
-		go b.serveConn(conn)
+		go b.handleConn(conn)
 	}
 }
 
+func (b *Broker) handleConn(conn net.Conn) {
+	key := rand.Int()
+	log.Printf("Connected: %s\n", conn.RemoteAddr())
+	b.storeConn(key, conn)
+
+	b.serveConn(conn)
+
+	log.Printf("Disconnected: %s\n", conn.RemoteAddr())
+	b.deleteConn(key)
+}
+
 func (b *Broker) serveConn(conn net.Conn) {
-	defer b.onDisconnect(conn)
 	r := bufio.NewReader(conn)
 	for {
 		msg, err := r.ReadString('\n')
@@ -44,11 +53,6 @@ func (b *Broker) serveConn(conn net.Conn) {
 		log.Printf("%s >> %s", conn.RemoteAddr(), msg)
 		b.broadcast(msg)
 	}
-}
-
-func (b *Broker) onDisconnect(conn net.Conn) {
-	log.Printf("Disconnected: %s\n", conn.RemoteAddr())
-	b.deleteConn(conn.RemoteAddr().String())
 }
 
 func (b *Broker) broadcast(msg string) {
@@ -68,19 +72,19 @@ func (b *Broker) allConns() []net.Conn {
 	return ret
 }
 
-func (b *Broker) loadConn(key string) net.Conn {
+func (b *Broker) loadConn(key int) net.Conn {
 	b.cpMtx.RLock()
 	defer b.cpMtx.RUnlock()
 	return b.connPool[key]
 }
 
-func (b *Broker) storeConn(key string, conn net.Conn) {
+func (b *Broker) storeConn(key int, conn net.Conn) {
 	b.cpMtx.Lock()
 	defer b.cpMtx.Unlock()
 	b.connPool[key] = conn
 }
 
-func (b *Broker) deleteConn(key string) {
+func (b *Broker) deleteConn(key int) {
 	b.cpMtx.Lock()
 	defer b.cpMtx.Unlock()
 	delete(b.connPool, key)

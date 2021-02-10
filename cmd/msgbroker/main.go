@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/aungmawjj/icmpnet"
 	"github.com/aungmawjj/icmpnet/broker"
@@ -16,6 +18,8 @@ func main() {
 
 	sum := sha256.Sum256([]byte(password))
 	aesKey := sum[:]
+
+	rand.Seed(time.Now().UnixNano())
 
 	ln, err := icmpnet.Listen(aesKey)
 	check(err)

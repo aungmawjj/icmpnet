@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
+	"time"
 
 	"github.com/aungmawjj/icmpnet"
 )
@@ -31,6 +33,7 @@ func sendMessages(conn net.Conn, nickName string) {
 }
 
 func main() {
+
 	var (
 		serverIP      string
 		password      string
@@ -66,6 +69,8 @@ func main() {
 
 	addr, err := net.ResolveIPAddr("ip4", serverIP)
 	check(err)
+
+	rand.Seed(time.Now().UnixNano()) // to generate random client id
 
 	fmt.Printf("Connecting: %s ...\n", addr)
 	conn, err := icmpnet.Connect(addr, aesKey)
