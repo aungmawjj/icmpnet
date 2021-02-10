@@ -97,6 +97,11 @@ func main() {
 
 	rpcClient := rpc.NewClient(conn)
 
+	vInfo, err := rpcClient.InfoVersion()
+	if err == nil {
+		fmt.Println(vInfo)
+	}
+
 	fmt.Print("Select mode Upload = 1, Download = 2 >>  ")
 	fmt.Scanln(&mode)
 	switch mode {

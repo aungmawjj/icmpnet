@@ -24,8 +24,10 @@ func main() {
 	ln, err := icmpnet.Listen(aesKey)
 	check(err)
 
-	rpcServer := rpc.NewServer(dirPath)
-	fmt.Println("File server started!")
+	welcome := fmt.Sprintf("File server [ icmpnet ] %s\n", icmpnet.Version)
+	rpcServer := rpc.NewServer(welcome, dirPath)
+	fmt.Println(welcome)
+
 	err = rpcServer.Serve(ln)
 	check(err)
 }

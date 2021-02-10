@@ -45,3 +45,9 @@ func (c *Client) FileDownload(filename string, downloadDir string) error {
 	}
 	return ioutil.WriteFile(path.Join(downloadDir, filename), resp.Data, 0644)
 }
+
+// InfoVersion requests server version info
+func (c *Client) InfoVersion() (string, error) {
+	var vInfo string
+	return vInfo, c.rpcClient.Call(MethodInfo+".Version", &struct{}{}, &vInfo)
+}

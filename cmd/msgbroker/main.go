@@ -23,8 +23,11 @@ func main() {
 
 	ln, err := icmpnet.Listen(aesKey)
 	check(err)
-	b := broker.New()
-	fmt.Println("Message broker started!")
+
+	welcome := fmt.Sprintf("Message Broker [ icmpnet ] %s\n", icmpnet.Version)
+	b := broker.New(welcome)
+	fmt.Println(welcome)
+
 	err = b.Serve(ln)
 	check(err)
 }

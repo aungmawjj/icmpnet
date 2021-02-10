@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"math/rand"
 	"net"
@@ -10,13 +11,15 @@ import (
 
 // Broker type
 type Broker struct {
+	welcome  string
 	connPool map[int]net.Conn
 	cpMtx    sync.RWMutex
 }
 
 // New create a new Broker
-func New() *Broker {
+func New(welcome string) *Broker {
 	return &Broker{
+		welcome:  welcome,
 		connPool: make(map[int]net.Conn, 100),
 	}
 }
@@ -44,6 +47,7 @@ func (b *Broker) handleConn(conn net.Conn) {
 }
 
 func (b *Broker) serveConn(conn net.Conn) {
+	fmt.Fprintf(conn, b.welcome)
 	r := bufio.NewReader(conn)
 	for {
 		msg, err := r.ReadString('\n')
@@ -58,7 +62,7 @@ func (b *Broker) serveConn(conn net.Conn) {
 func (b *Broker) broadcast(msg string) {
 	conns := b.allConns()
 	for _, conn := range conns {
-		conn.Write([]byte(msg))
+		fmt.Fprint(conn, msg)
 	}
 }
 

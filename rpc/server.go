@@ -8,6 +8,7 @@ import (
 
 // Service Methods
 const (
+	MethodInfo string = "info"
 	MethodFile string = "files"
 )
 
@@ -17,10 +18,11 @@ type Server struct {
 }
 
 // NewServer creates a new Server
-func NewServer(dirPath string) *Server {
+func NewServer(versionInfo, dirPath string) *Server {
 	s := &Server{
 		rpcServer: rpc.NewServer(),
 	}
+	s.rpcServer.RegisterName(MethodInfo, NewInfoAPI(versionInfo))
 	s.rpcServer.RegisterName(MethodFile, NewFileAPI(dirPath))
 	return s
 }
